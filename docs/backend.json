@@ -1,0 +1,291 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the StudySmart AI platform.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "name": {
+          "type": "string",
+          "description": "User's full name."
+        },
+        "email": {
+          "type": "string",
+          "description": "User's email address.",
+          "format": "email"
+        },
+        "learningLevel": {
+          "type": "string",
+          "description": "The user's current learning level (e.g., beginner, intermediate, advanced)."
+        },
+        "weakTopics": {
+          "type": "array",
+          "description": "Array of topic IDs that the user struggles with.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email"
+      ]
+    },
+    "ContentHistory": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ContentHistory",
+      "type": "object",
+      "description": "Represents a record of generated learning content.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the content history entry."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N ContentHistory)"
+        },
+        "topic": {
+          "type": "string",
+          "description": "The topic for which the content was generated."
+        },
+        "contentType": {
+          "type": "string",
+          "description": "The type of content generated (e.g., notes, summary, quiz, flashcards)."
+        },
+        "generatedContent": {
+          "type": "string",
+          "description": "The generated learning content (e.g., text, questions)."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The date and time when the content was generated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "topic",
+        "contentType",
+        "generatedContent",
+        "timestamp"
+      ]
+    },
+    "QuizResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "QuizResult",
+      "type": "object",
+      "description": "Represents the result of a user's quiz attempt.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the quiz result."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N QuizResult)"
+        },
+        "topic": {
+          "type": "string",
+          "description": "The topic of the quiz."
+        },
+        "score": {
+          "type": "number",
+          "description": "The user's score on the quiz."
+        },
+        "difficulty": {
+          "type": "string",
+          "description": "The difficulty level of the quiz (e.g., easy, medium, hard)."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date when the quiz was taken.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "topic",
+        "score",
+        "difficulty",
+        "date"
+      ]
+    },
+    "TopicRoom": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TopicRoom",
+      "type": "object",
+      "description": "Represents a real-time collaborative study room for a specific topic.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the topic room."
+        },
+        "topic": {
+          "type": "string",
+          "description": "The topic being studied in the room."
+        },
+        "userIds": {
+          "type": "array",
+          "description": "References to Users. (Relationship: User N:N TopicRoom)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The date and time when the room was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "topic",
+        "userIds",
+        "createdAt"
+      ]
+    },
+    "LearningStreak": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "LearningStreak",
+      "type": "object",
+      "description": "Represents a user's daily learning streak.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the learning streak entry."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N LearningStreak)"
+        },
+        "streakLength": {
+          "type": "number",
+          "description": "The number of consecutive days the user has been learning."
+        },
+        "lastStudiedDate": {
+          "type": "string",
+          "description": "The date the user last studied.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "streakLength",
+        "lastStudiedDate"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "google.com"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile data. Path-based ownership for user privacy.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/content_history/{contentHistoryId}",
+        "definition": {
+          "entityName": "ContentHistory",
+          "schema": {
+            "$ref": "#/backend/entities/ContentHistory"
+          },
+          "description": "Stores the content history for each user. Path-based ownership for user-specific data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "contentHistoryId",
+              "description": "The unique identifier for the content history entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/quiz_results/{quizResultId}",
+        "definition": {
+          "entityName": "QuizResult",
+          "schema": {
+            "$ref": "#/backend/entities/QuizResult"
+          },
+          "description": "Stores quiz results for each user. Path-based ownership for user-specific data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "quizResultId",
+              "description": "The unique identifier for the quiz result entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/topic_rooms/{topicRoomId}",
+        "definition": {
+          "entityName": "TopicRoom",
+          "schema": {
+            "$ref": "#/backend/entities/TopicRoom"
+          },
+          "description": "Stores information about real-time collaborative study rooms. Includes denormalized 'userIds' array for authorization independence.",
+          "params": [
+            {
+              "name": "topicRoomId",
+              "description": "The unique identifier for the topic room."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/learning_streaks/{learningStreakId}",
+        "definition": {
+          "entityName": "LearningStreak",
+          "schema": {
+            "$ref": "#/backend/entities/LearningStreak"
+          },
+          "description": "Stores learning streak data for each user. Path-based ownership for user-specific data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "learningStreakId",
+              "description": "The unique identifier for the learning streak entry."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to support the StudySmart AI platform, emphasizing authorization independence, clarity, and scalability. It leverages denormalization and structural segregation to ensure robust security rules without complex hierarchical dependencies.\n\n**Authorization Independence:** User-owned data (ContentHistory, QuizResult, LearningStreak) is stored under the `/users/{userId}` path, ensuring that access control can be based solely on the user's ID and avoids `get()` calls to parent documents. The `TopicRoom` uses a denormalized `userIds` array to define room membership, thus avoiding the need for complex queries or rules that check for user existence in a separate collection. This approach ensures atomic operations and simplifies security rules.\n\n**Structural Segregation:** Data with different access needs are separated into different collections or subcollections. User profiles are stored in the `/users/{userId}` collection. Collaborative topic rooms are stored in the `/topic_rooms` collection, separate from user-specific data. This segregation simplifies security rules by ensuring that all documents in a collection share the same access requirements. Path-based ownership is favored for User 1:N relationships to simplify authorization. For collaborative scenarios (TopicRoom), a Membership Map (`userIds` array) is used. Global roles are not required in this specific implementation.\n\n**QAPs (Rules Are Not Filters):** The structure supports secure `list` operations. For example, listing content history for a specific user is performed via the `/users/{userId}/content_history` subcollection. The rules can efficiently ensure that only the content history owned by that user is accessible, without needing to filter based on document content. Similarly, listing topic rooms can be secured by verifying the user's ID against the `userIds` array within the `topic_rooms` collection.\n"
+  }
+}

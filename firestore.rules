@@ -1,0 +1,194 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * Core Philosophy: This ruleset enforces a strict user-ownership model for all
+     * personal data, ensuring absolute privacy. Collaborative data, such as
+     * topic rooms, is secured using a denormalized list of participants,
+     * allowing access only to authorized members. The default security posture
+     * is to deny all access unless explicitly granted.
+     *
+     * Data Structure: User-specific data (content history, quiz results, learning
+     * streaks) is nested within a user's document under the /users/{userId} path.
+     * This path-based ownership simplifies rules and enhances performance. Shared,
+     * collaborative data (topic_rooms) resides in a separate top-level collection
+     * to segregate access patterns.
+     *
+     * Key Security Decisions:
+     * - User Enumeration is Disabled: Listing the top-level `/users` collection is
+     *   disallowed to protect user privacy.
+     * - Strict Ownership: A user can only access data within their own
+     *   `/users/{userId}` document tree.
+     * - Collaborative Access: Access to a `topic_room` is granted only if a user's
+     *   ID is present in the room's `userIds` array, which is denormalized onto
+     *   the document for fast, secure access checks.
+     * - User Deletion Disabled: Users cannot delete their own profile documents
+     *   from the client-side to prevent accidental data loss. This action should be
+     *   handled by a trusted server environment.
+     *
+     * Denormalization for Authorization: This ruleset relies on denormalization
+     * for efficient security. The `/topic_rooms/{topicRoomId}` documents contain
+     * a `userIds` array, which avoids the need for costly or impossible lookups
+     * to other collections during rule evaluation. Similarly, user subcollection
+     * documents contain a `userId` field to enforce relational integrity with
+     * their parent path.
+     *
+     * Structural Segregation: Private user data and public/shared data are kept
+     * in separate collections. User data is in `/users/{userId}/...`, while
+     * collaborative rooms are in `/topic_rooms`. This clear separation ensures
+     * that simple, path-based rules can be applied effectively without a risk
+     * of data leakage.
+     */
+
+    // --------------------------------------------------------------------------
+    // Helper Functions
+    // --------------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the requesting user's UID matches the provided userId.
+     * This is the foundation of the user-ownership model.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Validates that an incoming document has a 'userId' field that matches
+     * the user's authenticated UID. Used for validating new documents.
+     */
+    function hasCorrectUserIdOnCreate(userId) {
+      return request.resource.data.userId == userId;
+    }
+
+    /**
+     * Validates that the 'userId' field of a document is not being changed.
+     * Used for enforcing immutability on update.
+     */
+    function userIdIsImmutable() {
+      return request.resource.data.userId == resource.data.userId;
+    }
+    
+    /**
+     * Validates that the 'id' field of a user document matches the path on create.
+     */
+    function hasCorrectIdOnCreate(userId) {
+      return request.resource.data.id == userId;
+    }
+    
+    /**
+     * Validates that the 'id' field of a user document is immutable on update.
+     */
+    function idIsImmutable() {
+      return request.resource.data.id == resource.data.id;
+    }
+
+    /**
+     * Checks if the requesting user is a member of a topic room.
+     * Reads the `userIds` array from the existing document.
+     */
+    function isMemberOfRoom() {
+      return isSignedIn() && request.auth.uid in resource.data.userIds;
+    }
+
+    /**
+     * Checks if a user is creating a valid topic room where they are a member.
+     * Reads the `userIds` array from the incoming request data.
+     */
+    function isCreatingRoomAsMember() {
+      let data = request.resource.data;
+      return isSignedIn() && data.userIds is list && request.auth.uid in data.userIds;
+    }
+
+    // --------------------------------------------------------------------------
+    // Collection Rules
+    // --------------------------------------------------------------------------
+
+    /**
+     * @description Manages user profile data.
+     * @path /users/{userId}
+     * @allow (create) A new user can create their own profile document.
+     * @deny (list) Another user trying to list all user profiles.
+     * @principle Enforces self-creation and ownership. A user has full control over
+     *   their own document but cannot see or interact with others'.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && hasCorrectIdOnCreate(userId);
+      allow update: if isOwner(userId) && resource != null && idIsImmutable();
+      allow delete: if false;
+    }
+
+    /**
+     * @description Stores the AI-generated content history for a user.
+     * @path /users/{userId}/content_history/{contentHistoryId}
+     * @allow (create) A user can create a new content history entry under their own profile.
+     * @deny (get) A user trying to read the content history of another user.
+     * @principle Restricts access to a user's own data tree, ensuring personal
+     *   learning history is private.
+     */
+    match /users/{userId}/content_history/{contentHistoryId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasCorrectUserIdOnCreate(userId);
+      allow update: if isOwner(userId) && resource != null && userIdIsImmutable();
+      allow delete: if isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Stores the quiz results for a user.
+     * @path /users/{userId}/quiz_results/{quizResultId}
+     * @allow (list) A user can list all of their own past quiz results.
+     * @deny (update) A user trying to modify the quiz results of another user.
+     * @principle Restricts access to a user's own data tree, ensuring personal
+     *   performance metrics are private.
+     */
+    match /users/{userId}/quiz_results/{quizResultId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasCorrectUserIdOnCreate(userId);
+      allow update: if isOwner(userId) && resource != null && userIdIsImmutable();
+      allow delete: if isOwner(userId) && resource != null;
+    }
+    
+    /**
+     * @description Stores the daily learning streak data for a user.
+     * @path /users/{userId}/learning_streaks/{learningStreakId}
+     * @allow (get) A user can read their own learning streak information.
+     * @deny (create) A user trying to create a learning streak entry for another user.
+     * @principle Restricts access to a user's own data tree, ensuring personal
+     *   gamification data is private and secure.
+     */
+    match /users/{userId}/learning_streaks/{learningStreakId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasCorrectUserIdOnCreate(userId);
+      allow update: if isOwner(userId) && resource != null && userIdIsImmutable();
+      allow delete: if isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Manages collaborative topic rooms where users can study together.
+     * @path /topic_rooms/{topicRoomId}
+     * @allow (create) An authenticated user can create a new room, adding themselves as a member.
+     * @deny (get) A non-member trying to read the details of a private room.
+     * @principle Restricts access to a closed group of collaborators defined in the
+     *   document's `userIds` array.
+     */
+    match /topic_rooms/{topicRoomId} {
+      allow get: if isMemberOfRoom();
+      allow list: if false;
+      allow create: if isCreatingRoomAsMember();
+      allow update: if isMemberOfRoom() && resource != null;
+      allow delete: if isMemberOfRoom() && resource != null;
+    }
+  }
+}
